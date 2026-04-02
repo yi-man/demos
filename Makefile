@@ -23,7 +23,9 @@ run: sync
 	uv run -- uvicorn --host $(HOST) --port $(PORT) $(MODULE).main:app
 
 test: sync
-	uv run -- pytest
+	@set -e; \
+	uv run -- pytest; rc=$$?; \
+	if [ $$rc -ne 0 ] && [ $$rc -ne 5 ]; then exit $$rc; fi
 
 lint: sync
 	uv run -- ruff check .

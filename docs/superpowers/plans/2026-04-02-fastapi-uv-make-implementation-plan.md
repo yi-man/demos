@@ -120,7 +120,7 @@ readme.write_text(
     "# Orders (FastAPI)\\n\\n"
     "Quickstart\\n\\n"
     "## Setup\\n"
-    "- `make python`\\n"
+    "- `make install`\\n"
     "- `make lock`\\n"
     "- `make sync`\\n\\n"
     "## Run\\n"
@@ -556,7 +556,7 @@ git commit -m "chore: add uv.lock for reproducible orders dependencies"
 Run:
 
 ```bash
-make python
+make install
 make lock
 make sync
 make lint

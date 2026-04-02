@@ -1,1 +1,1 @@
-# Orders (FastAPI)\n\nQuickstart\n\n## Setup\n- `make python`\n- `make lock`\n- `make sync`\n\n## Run\n- Dev (hot reload): `make dev`\n- Prod-like: `make run`\n\nHealth check\n\n- `curl http://127.0.0.1:9600/healthz`\n\n
+# Orders (FastAPI)\n\nQuickstart\n\n## Setup\n- `make install`\n- `make lock`\n- `make sync`\n\n## Run\n- Dev (hot reload): `make dev`\n- Prod-like: `make run`\n\nHealth check\n\n- `curl http://127.0.0.1:9600/healthz`\n\n

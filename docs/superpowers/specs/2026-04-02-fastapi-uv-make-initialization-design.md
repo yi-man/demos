@@ -25,10 +25,10 @@
 - 要求所有运行/测试/质量命令在同一个虚拟环境内执行，并尽量确保以锁文件为准。
 
 ## make 命令体系设计
-本设计按你前面确认的 target 列表命名，采用全小写短目标（例如 `make python` / `make sync` / `make dev` 等）：
+本设计按你前面确认的 target 列表命名，采用全小写短目标（例如 `make install` / `make sync` / `make dev` 等）：
 
 ### 基础目标
-- `make python`
+- `make install`
   - 作用：确保目标 Python `3.13` 存在。
   - 行为：`uv python install 3.13`（如已存在则跳过/快速返回）。
 
@@ -77,7 +77,7 @@
 - `make docs`
   - 作用：生成最小化工程文档（不强制引入 Sphinx）。
   - 依赖：无或仅依赖 `sync`（取决于实现方式）。
-  - 行为：生成/更新 `README.md` 中的 Quickstart（包含 `make python/lock/sync/dev` 与 `GET /healthz` 调用方式）；不引入额外文档构建工具。
+  - 行为：生成/更新 `README.md` 中的 Quickstart（包含 `make install/lock/sync/dev` 与 `GET /healthz` 调用方式）；不引入额外文档构建工具。
 
 > 注：在实现阶段，会同步确认 target 是否采用 `uv run` 还是直接在 `.venv/bin/` 中执行。该设计只约束行为语义与依赖关系。
 
@@ -140,7 +140,7 @@ tests/
 
 ## 交付与验证（实现完成后执行的命令）
 实现完成后，按以下验证路径确认可用性：
-- `make python`
+- `make install`
 - `make lock`
 - `make sync`
 - `make test`

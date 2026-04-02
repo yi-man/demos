@@ -5,10 +5,13 @@ PYTHON_VERSION := 3.13
 HOST ?= 127.0.0.1
 PORT ?= 9600
 
-.PHONY: python lock sync dev run test lint format build docs
+.PHONY: install python lock sync dev run test lint format build docs
 
-python:
+install:
 	uv python install $(PYTHON_VERSION)
+
+# Backwards-compatible alias; prefer `make install`.
+python: install
 
 lock:
 	uv lock --python $(PYTHON_VERSION)
@@ -37,5 +40,5 @@ build: sync
 	uv run -- python -m build
 
 docs:
-	@uv run -- python -c 'import pathlib; readme=pathlib.Path("README.md"); readme.write_text("# Orders (FastAPI)\\n\\n" "Quickstart\\n\\n" "## Setup\\n" "- `make python`\\n" "- `make lock`\\n" "- `make sync`\\n\\n" "## Run\\n" "- Dev (hot reload): `make dev`\\n" "- Prod-like: `make run`\\n\\n" "Health check\\n\\n" "- `curl http://127.0.0.1:9600/healthz`\\n" "\\n"); print("README.md updated.")'
+	@uv run -- python -c 'import pathlib; readme=pathlib.Path("README.md"); readme.write_text("# Orders (FastAPI)\\n\\n" "Quickstart\\n\\n" "## Setup\\n" "- `make install`\\n" "- `make lock`\\n" "- `make sync`\\n\\n" "## Run\\n" "- Dev (hot reload): `make dev`\\n" "- Prod-like: `make run`\\n\\n" "Health check\\n\\n" "- `curl http://127.0.0.1:9600/healthz`\\n" "\\n"); print("README.md updated.")'
 

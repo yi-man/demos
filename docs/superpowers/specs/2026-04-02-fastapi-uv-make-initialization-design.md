@@ -77,7 +77,7 @@
 - `make docs`
   - 作用：生成最小化工程文档（不强制引入 Sphinx）。
   - 依赖：无或仅依赖 `sync`（取决于实现方式）。
-  - 行为：占位策略：更新 `README.md`（在下一阶段由具体实现决定）。
+  - 行为：生成/更新 `README.md` 中的 Quickstart（包含 `make python/lock/sync/dev` 与 `GET /healthz` 调用方式）；不引入额外文档构建工具。
 
 > 注：在实现阶段，会同步确认 target 是否采用 `uv run` 还是直接在 `.venv/bin/` 中执行。该设计只约束行为语义与依赖关系。
 

@@ -37,24 +37,5 @@ build: sync
 	uv run -- python -m build
 
 docs:
-	@python - <<'PY'
-	import pathlib
-
-	readme = pathlib.Path("README.md")
-	readme.write_text(
-	    "# Orders (FastAPI)\\n\\n"
-	    "Quickstart\\n\\n"
-	    "## Setup\\n"
-	    "- `make python`\\n"
-	    "- `make lock`\\n"
-	    "- `make sync`\\n\\n"
-	    "## Run\\n"
-	    "- Dev (hot reload): `make dev`\\n"
-	    "- Prod-like: `make run`\\n\\n"
-	    "Health check\\n\\n"
-	    "- `curl http://127.0.0.1:9600/healthz`\\n"
-	    "\\n"
-	)
-	print("README.md updated.")
-	PY
+	@uv run -- python -c 'import pathlib; readme=pathlib.Path("README.md"); readme.write_text("# Orders (FastAPI)\\n\\n" "Quickstart\\n\\n" "## Setup\\n" "- `make python`\\n" "- `make lock`\\n" "- `make sync`\\n\\n" "## Run\\n" "- Dev (hot reload): `make dev`\\n" "- Prod-like: `make run`\\n\\n" "Health check\\n\\n" "- `curl http://127.0.0.1:9600/healthz`\\n" "\\n"); print("README.md updated.")'
 

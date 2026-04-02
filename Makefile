@@ -5,7 +5,7 @@ PYTHON_VERSION := 3.13
 HOST ?= 127.0.0.1
 PORT ?= 9600
 
-.PHONY: install python lock sync dev run test lint format build docs
+.PHONY: install python lock sync dev run test lint format typecheck build docs
 
 install:
 	uv python install $(PYTHON_VERSION)
@@ -35,6 +35,9 @@ lint: sync
 
 format: sync
 	uv run -- ruff format .
+
+typecheck: sync
+	uv run -- mypy src tests
 
 build: sync
 	uv run -- python -m build

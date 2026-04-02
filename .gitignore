@@ -1,4 +1,6 @@
 .venv/
+.lsp/
+.clj-kondo/
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -11,7 +11,13 @@ requires-python = ">=3.13"
 dependencies = [
   "fastapi>=0.110.0",
   "uvicorn[standard]>=0.27.0",
-  "pydantic-settings>=2.0.0"
+  "pydantic-settings>=2.0.0",
+  "SQLAlchemy>=2.0.0",
+  "alembic>=1.13.0",
+  "pymysql>=1.1.0",
+  "aiomysql>=0.2.0",
+  "redis>=5.0.0",
+  "cryptography>=46.0.6",
 ]
 optional-dependencies = { dev = [
   "pytest>=8.0.0",

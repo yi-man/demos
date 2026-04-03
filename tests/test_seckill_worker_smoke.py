@@ -63,6 +63,7 @@ async def _run_one_event_case() -> None:
 
             await run_consumer_loop(
                 redis_client,
+                consumer_name="test-worker-smoke",
                 max_rounds=1,
                 sleep_when_empty_s=0.01,
             )

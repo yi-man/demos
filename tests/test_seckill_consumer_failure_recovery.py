@@ -102,7 +102,8 @@ async def _run_worker_guard_case(monkeypatch: pytest.MonkeyPatch) -> None:
 
     call_count = {"n": 0}
 
-    async def _broken_consume_once(redis_client):  # type: ignore[no-untyped-def]
+    async def _broken_consume_once(*args, **kwargs):  # type: ignore[no-untyped-def]
+        _ = (args, kwargs)
         call_count["n"] += 1
         raise RuntimeError("boom")
 
@@ -113,6 +114,7 @@ async def _run_worker_guard_case(monkeypatch: pytest.MonkeyPatch) -> None:
 
     processed = await run_consumer_loop(
         DummyRedis(),  # type: ignore[arg-type]
+        consumer_name="test-worker-failure",
         max_rounds=1,
         sleep_when_empty_s=0.01,
     )

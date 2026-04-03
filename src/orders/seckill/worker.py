@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import signal
+import socket
+import uuid
 from typing import Final
 
 from redis.asyncio import Redis as AsyncRedis
 
 from orders.core.redis.client import create_redis_client
-from orders.seckill.consumer import consume_once
+from orders.seckill.consumer import (
+    SECKILL_STREAM_GROUP,
+    consume_once,
+    ensure_consumer_group,
+)
 
 DEFAULT_SLEEP_WHEN_EMPTY_S: Final[float] = 0.2
 
@@ -16,6 +23,7 @@ DEFAULT_SLEEP_WHEN_EMPTY_S: Final[float] = 0.2
 async def run_consumer_loop(
     redis_client: AsyncRedis,
     *,
+    consumer_name: str,
     max_rounds: int | None = None,
     sleep_when_empty_s: float = DEFAULT_SLEEP_WHEN_EMPTY_S,
 ) -> int:
@@ -30,7 +38,11 @@ async def run_consumer_loop(
     while max_rounds is None or iterations < max_rounds:
         iterations += 1
         try:
-            ok = await consume_once(redis_client=redis_client)
+            ok = await consume_once(
+                redis_client=redis_client,
+                group_name=SECKILL_STREAM_GROUP,
+                consumer_name=consumer_name,
+            )
         except Exception:
             await asyncio.sleep(sleep_when_empty_s)
             continue
@@ -46,6 +58,7 @@ async def _run_forever(
     sleep_when_empty_s: float,
 ) -> None:
     redis_client = create_redis_client()
+    consumer_name = f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     stop_event = asyncio.Event()
 
     def _request_stop() -> None:
@@ -60,9 +73,11 @@ async def _run_forever(
             pass
 
     try:
+        await ensure_consumer_group(redis_client)
         while not stop_event.is_set():
             await run_consumer_loop(
                 redis_client,
+                consumer_name=consumer_name,
                 max_rounds=1,
                 sleep_when_empty_s=sleep_when_empty_s,
             )

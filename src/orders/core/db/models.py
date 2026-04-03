@@ -173,6 +173,10 @@ class SeckillRequestState(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="RECEIVED")
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    processor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[datetime.datetime | None] = mapped_column(
+        MySQLTimestamp(fsp=6), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         MySQLTimestamp(fsp=6),
         server_default=text("CURRENT_TIMESTAMP(6)"),

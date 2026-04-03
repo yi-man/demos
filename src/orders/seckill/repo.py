@@ -98,6 +98,20 @@ async def has_activity(
     return await session.get(SeckillActivity, activity_id) is not None
 
 
+async def get_activity_stock_snapshot(
+    session: AsyncSession,
+    activity_id: int,
+) -> tuple[int, int] | None:
+    stmt = select(SeckillActivity.total_stock, SeckillActivity.db_sold).where(
+        SeckillActivity.id == activity_id
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is None:
+        return None
+    total_stock, db_sold = row
+    return int(total_stock), int(db_sold)
+
+
 async def add_compensation_ledger_once(
     session: AsyncSession,
     activity_id: int,

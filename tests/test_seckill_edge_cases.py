@@ -7,9 +7,10 @@ import uuid
 import redis
 from fastapi.testclient import TestClient
 from redis.asyncio import Redis as AsyncRedis
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from orders.core.db.alembic_utils import build_mysql_sync_url
 from orders.core.db.models import (
     SeckillActivity,
     SeckillOrder,
@@ -80,15 +81,44 @@ async def _run_db_stock_exhausted_case() -> None:
     try:
         await redis_client.delete(SECKILL_STREAM_KEY)
         await redis_client.set(stock_key(activity_id), 1)
-        await redis_client.set(result_key(activity_id, request_id), "PENDING")
-        await redis_client.xadd(
+
+        accepted = await redis_client.eval(
+            """
+            local ttl = ARGV[1]
+            if redis.call("EXISTS", KEYS[2]) == 1 then
+                return "DUPLICATE"
+            end
+            local stock = tonumber(redis.call("GET", KEYS[1]) or "0")
+            if stock <= 0 then
+                return "SOLD_OUT"
+            end
+            redis.call("DECR", KEYS[1])
+            redis.call("SET", KEYS[2], "1", "EX", ttl)
+            redis.call("SET", KEYS[3], "PENDING", "EX", ttl)
+            redis.call(
+                "XADD",
+                KEYS[4],
+                "*",
+                "activity_id",
+                ARGV[2],
+                "user_id",
+                ARGV[3],
+                "request_id",
+                ARGV[4]
+            )
+            return "ACCEPTED"
+            """,
+            4,
+            stock_key(activity_id),
+            req_key(activity_id, request_id),
+            result_key(activity_id, request_id),
             SECKILL_STREAM_KEY,
-            {
-                "activity_id": str(activity_id),
-                "user_id": "42",
-                "request_id": request_id,
-            },
+            "300",
+            str(activity_id),
+            "42",
+            request_id,
         )
+        assert accepted == "ACCEPTED"
 
         ok = await consume_once(redis_client=redis_client, max_retries=1)
         assert ok is True
@@ -96,7 +126,7 @@ async def _run_db_stock_exhausted_case() -> None:
         result = await redis_client.get(result_key(activity_id, request_id))
         stock = await redis_client.get(stock_key(activity_id))
         assert result == "FAILED"
-        assert stock == "2"
+        assert stock == "0"
 
         async with SessionMaker() as session:
             state = await session.scalar(
@@ -261,9 +291,4 @@ def _cleanup_activity(activity_id: int) -> None:
 
 
 def _sync_engine():
-    return create_engine(
-        "mysql+pymysql://"
-        f"{settings.mysql_user}:{settings.mysql_pass}"
-        f"@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}",
-        pool_pre_ping=True,
-    )
+    return create_engine(build_mysql_sync_url(), pool_pre_ping=True)

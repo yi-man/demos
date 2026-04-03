@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session
 
+from orders.core.db.alembic_utils import build_mysql_sync_url
 from orders.core.db.models import (
     SeckillActivity,
     SeckillOrder,
@@ -147,9 +148,4 @@ def _cleanup_activity(activity_id: int) -> None:
 
 
 def _sync_engine():
-    return create_engine(
-        "mysql+pymysql://"
-        f"{settings.mysql_user}:{settings.mysql_pass}"
-        f"@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}",
-        pool_pre_ping=True,
-    )
+    return create_engine(build_mysql_sync_url(), pool_pre_ping=True)

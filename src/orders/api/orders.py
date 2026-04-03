@@ -42,11 +42,7 @@ async def _fetch_order(
     session: AsyncSession,
     order_id: int,
 ) -> Order | None:
-    stmt = (
-        select(Order)
-        .options(selectinload(Order.items))
-        .where(Order.id == order_id)
-    )
+    stmt = select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 

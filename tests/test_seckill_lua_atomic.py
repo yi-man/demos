@@ -4,7 +4,7 @@ import redis
 
 from orders.core.settings import settings
 from orders.seckill.consumer import SECKILL_STREAM_KEY
-from orders.seckill.keys import req_key, result_key, stock_key
+from orders.seckill.keys import inflight_key, req_key, result_key, stock_key
 from orders.seckill.service import run_pre_deduct
 
 
@@ -17,6 +17,7 @@ def test_lua_decrement_is_atomic_and_idempotent() -> None:
 
     keys_to_cleanup = [
         stock_key(activity_id),
+        inflight_key(activity_id),
         req_key(activity_id, first_request_id),
         result_key(activity_id, first_request_id),
         req_key(activity_id, second_request_id),
@@ -52,6 +53,7 @@ def test_lua_decrement_is_atomic_and_idempotent() -> None:
     assert duplicate == "DUPLICATE"
     assert sold_out == "SOLD_OUT"
     assert int(client.get(stock_key(activity_id)) or 0) == 0
+    assert int(client.get(inflight_key(activity_id)) or 0) == 1
     assert client.get(result_key(activity_id, first_request_id)) == "PENDING"
     assert client.exists(req_key(activity_id, first_request_id)) == 1
     entries = client.xrange(SECKILL_STREAM_KEY)

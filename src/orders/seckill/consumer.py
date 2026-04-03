@@ -11,7 +11,7 @@ from orders.seckill.exceptions import (
     SeckillActivityNotFoundError,
     SeckillDbStockExhaustedError,
 )
-from orders.seckill.keys import result_key
+from orders.seckill.keys import finalized_key, inflight_key, result_key
 from orders.seckill.repo import (
     acquire_processing_lease,
     confirm_order_once,
@@ -133,6 +133,32 @@ def _coerce_autoclaim_entries(result) -> list[tuple[str, dict]]:
         if isinstance(claimed, list):
             return claimed
     return []
+
+
+async def _finalize_request(
+    redis_client,
+    *,
+    activity_id: int,
+    request_id: str,
+    result_code: str,
+    result_ttl_seconds: int,
+) -> None:
+    request_finalized_key = finalized_key(activity_id, request_id)
+    finalized = await redis_client.set(
+        request_finalized_key,
+        result_code,
+        ex=result_ttl_seconds,
+        nx=True,
+    )
+    if finalized:
+        inflight_after = await redis_client.decr(inflight_key(activity_id))
+        if inflight_after < 0:
+            await redis_client.set(inflight_key(activity_id), 0)
+    await redis_client.set(
+        result_key(activity_id, request_id),
+        result_code,
+        ex=result_ttl_seconds,
+    )
 
 
 async def consume_once(
@@ -259,10 +285,12 @@ async def consume_once(
         # keep in pending list for re-claim by lease timeout
         return False
 
-    await redis_client.set(
-        result_key(activity_id, request_id),
-        "SUCCESS",
-        ex=SUCCESS_TTL_SECONDS,
+    await _finalize_request(
+        redis_client,
+        activity_id=activity_id,
+        request_id=request_id,
+        result_code="SUCCESS",
+        result_ttl_seconds=SUCCESS_TTL_SECONDS,
     )
     await redis_client.xack(stream_key, group_name, event_id)
     await redis_client.xdel(stream_key, event_id)

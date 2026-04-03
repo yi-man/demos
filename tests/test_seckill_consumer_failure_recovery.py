@@ -11,7 +11,7 @@ from orders.core.db.models import SeckillRequestState, SeckillStockLedger
 from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.seckill.consumer import SECKILL_STREAM_KEY, consume_once
-from orders.seckill.keys import req_key, result_key, stock_key
+from orders.seckill.keys import finalized_key, inflight_key, req_key, result_key, stock_key
 from orders.seckill.worker import run_consumer_loop
 
 
@@ -48,7 +48,10 @@ async def _run_activity_missing_case() -> None:
         current_result = await redis_client.get(result_key(activity_id, request_id))
         assert current_result == "FAILED"
         current_stock = await redis_client.get(stock_key(activity_id))
-        assert current_stock == "1"
+        assert current_stock is None
+        inflight = await redis_client.get(inflight_key(activity_id))
+        assert inflight is None
+        assert await redis_client.get(finalized_key(activity_id, request_id)) == "1"
         stream_len = await redis_client.xlen(SECKILL_STREAM_KEY)
         assert stream_len == 0
 
@@ -85,6 +88,8 @@ async def _run_activity_missing_case() -> None:
                 )
         await redis_client.delete(SECKILL_STREAM_KEY)
         await redis_client.delete(stock_key(activity_id))
+        await redis_client.delete(inflight_key(activity_id))
+        await redis_client.delete(finalized_key(activity_id, request_id))
         await redis_client.delete(req_key(activity_id, request_id))
         await redis_client.delete(result_key(activity_id, request_id))
         await redis_client.aclose()

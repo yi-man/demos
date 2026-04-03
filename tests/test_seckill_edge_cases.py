@@ -27,7 +27,13 @@ from orders.seckill.consumer import (
     consume_once,
     ensure_consumer_group,
 )
-from orders.seckill.keys import req_key, result_key, stock_key
+from orders.seckill.keys import (
+    finalized_key,
+    inflight_key,
+    req_key,
+    result_key,
+    stock_key,
+)
 
 
 def test_attempt_rejects_activity_ended() -> None:
@@ -68,6 +74,10 @@ def test_reconcile_sets_success_when_db_order_exists_but_result_is_missing() -> 
     asyncio.run(_run_reconcile_success_backfill_case())
 
 
+def test_failed_reconcile_preserves_other_inflight_reservations() -> None:
+    asyncio.run(_run_failed_reconcile_preserves_other_inflight_case())
+
+
 async def _run_db_stock_exhausted_case() -> None:
     activity_id = _create_activity(
         status="online",
@@ -93,6 +103,7 @@ async def _run_db_stock_exhausted_case() -> None:
                 return "SOLD_OUT"
             end
             redis.call("DECR", KEYS[1])
+            redis.call("INCR", KEYS[5])
             redis.call("SET", KEYS[2], "1", "EX", ttl)
             redis.call("SET", KEYS[3], "PENDING", "EX", ttl)
             redis.call(
@@ -108,11 +119,12 @@ async def _run_db_stock_exhausted_case() -> None:
             )
             return "ACCEPTED"
             """,
-            4,
+            5,
             stock_key(activity_id),
             req_key(activity_id, request_id),
             result_key(activity_id, request_id),
             SECKILL_STREAM_KEY,
+            inflight_key(activity_id),
             "300",
             str(activity_id),
             "42",
@@ -125,8 +137,10 @@ async def _run_db_stock_exhausted_case() -> None:
 
         result = await redis_client.get(result_key(activity_id, request_id))
         stock = await redis_client.get(stock_key(activity_id))
+        inflight = await redis_client.get(inflight_key(activity_id))
         assert result == "FAILED"
         assert stock == "0"
+        assert inflight == "0"
 
         async with SessionMaker() as session:
             state = await session.scalar(
@@ -148,6 +162,8 @@ async def _run_db_stock_exhausted_case() -> None:
             assert order is None
     finally:
         await redis_client.delete(SECKILL_STREAM_KEY)
+        await redis_client.delete(inflight_key(activity_id))
+        await redis_client.delete(finalized_key(activity_id, request_id))
         await redis_client.delete(stock_key(activity_id))
         await redis_client.delete(req_key(activity_id, request_id))
         await redis_client.delete(result_key(activity_id, request_id))
@@ -203,6 +219,7 @@ async def _run_reconcile_success_backfill_case() -> None:
             request_id=request_id,
             user_id=99,
         )
+        await redis_client.set(inflight_key(activity_id), 1)
         await redis_client.delete(result_key(activity_id, request_id))
 
         result = await reconcile_once(
@@ -212,8 +229,52 @@ async def _run_reconcile_success_backfill_case() -> None:
         )
         assert result == "SUCCESS"
         assert await redis_client.get(result_key(activity_id, request_id)) == "SUCCESS"
+        assert await redis_client.get(inflight_key(activity_id)) == "0"
+        assert await redis_client.get(stock_key(activity_id)) is None
     finally:
+        await redis_client.delete(stock_key(activity_id))
+        await redis_client.delete(inflight_key(activity_id))
+        await redis_client.delete(finalized_key(activity_id, request_id))
         await redis_client.delete(result_key(activity_id, request_id))
+        await redis_client.aclose()
+        _cleanup_activity(activity_id)
+
+
+async def _run_failed_reconcile_preserves_other_inflight_case() -> None:
+    activity_id = _create_activity(
+        status="online",
+        start_offset=datetime.timedelta(minutes=-1),
+        end_offset=datetime.timedelta(minutes=10),
+        total_stock=3,
+    )
+    failed_request_id = f"reconcile-failed-{uuid.uuid4().hex}"
+    other_request_id = f"reconcile-other-{uuid.uuid4().hex}"
+    redis_client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        await redis_client.set(stock_key(activity_id), 0)
+        await redis_client.set(inflight_key(activity_id), 2)
+        await redis_client.set(result_key(activity_id, failed_request_id), "PENDING")
+        await redis_client.set(result_key(activity_id, other_request_id), "PENDING")
+
+        result = await reconcile_once(
+            redis_client=redis_client,
+            activity_id=activity_id,
+            request_id=failed_request_id,
+        )
+        assert result == "FAILED"
+        assert await redis_client.get(result_key(activity_id, failed_request_id)) == "FAILED"
+        assert await redis_client.get(stock_key(activity_id)) == "2"
+        assert await redis_client.get(inflight_key(activity_id)) == "1"
+        assert await redis_client.get(finalized_key(activity_id, failed_request_id)) == "1"
+        assert (
+            await redis_client.get(result_key(activity_id, other_request_id)) == "PENDING"
+        )
+    finally:
+        await redis_client.delete(finalized_key(activity_id, failed_request_id))
+        await redis_client.delete(inflight_key(activity_id))
+        await redis_client.delete(stock_key(activity_id))
+        await redis_client.delete(result_key(activity_id, failed_request_id))
+        await redis_client.delete(result_key(activity_id, other_request_id))
         await redis_client.aclose()
         _cleanup_activity(activity_id)
 

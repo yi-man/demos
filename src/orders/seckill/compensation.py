@@ -5,11 +5,53 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from orders.core.db.models import SeckillActivity
 from orders.core.db.session import SessionMaker
-from orders.seckill.keys import result_key, stock_key
+from orders.seckill.keys import (
+    finalized_key,
+    inflight_key,
+    req_key,
+    result_key,
+    stock_key,
+)
 from orders.seckill.repo import add_compensation_ledger_once, has_activity, has_order
 
 FAILED_TTL_SECONDS = 300
 SUCCESS_TTL_SECONDS = 300
+
+
+async def finalize_request_once(
+    redis_client,
+    *,
+    activity_id: int,
+    request_id: str,
+    result: str,
+    ttl_seconds: int,
+    release_reservation: bool,
+    release_to_target_stock: int | None,
+) -> str:
+    finalized = await redis_client.set(
+        finalized_key(activity_id, request_id),
+        "1",
+        ex=ttl_seconds,
+        nx=True,
+    )
+    if finalized and release_reservation:
+        inflight_after = await redis_client.decr(inflight_key(activity_id))
+        if inflight_after < 0:
+            await redis_client.set(inflight_key(activity_id), 0)
+            inflight_after = 0
+
+        if release_to_target_stock is None:
+            await redis_client.incr(stock_key(activity_id))
+        else:
+            target_stock = max(release_to_target_stock - inflight_after, 0)
+            await redis_client.set(stock_key(activity_id), target_stock)
+
+    await redis_client.set(
+        result_key(activity_id, request_id),
+        result,
+        ex=ttl_seconds,
+    )
+    return result
 
 
 async def reconcile_once(
@@ -26,12 +68,15 @@ async def reconcile_once(
                 request_id=request_id,
             )
             if order_exists:
-                await redis_client.set(
-                    result_key(activity_id, request_id),
-                    "SUCCESS",
-                    ex=SUCCESS_TTL_SECONDS,
+                return await finalize_request_once(
+                    redis_client,
+                    activity_id=activity_id,
+                    request_id=request_id,
+                    result="SUCCESS",
+                    ttl_seconds=SUCCESS_TTL_SECONDS,
+                    release_reservation=True,
+                    release_to_target_stock=0,
                 )
-                return "SUCCESS"
 
             activity_exists = await has_activity(
                 session=session,
@@ -55,15 +100,32 @@ async def reconcile_once(
                     request_id=request_id,
                 )
             if ledger_added:
-                if target_stock is not None:
-                    await redis_client.set(stock_key(activity_id), target_stock)
+                return await finalize_request_once(
+                    redis_client,
+                    activity_id=activity_id,
+                    request_id=request_id,
+                    result="FAILED",
+                    ttl_seconds=FAILED_TTL_SECONDS,
+                    release_reservation=True,
+                    release_to_target_stock=target_stock,
+                )
             elif not activity_exists:
-                # Activity may be removed or not yet materialized.
-                # Still release reservation in Redis.
-                await redis_client.incr(stock_key(activity_id))
-            await redis_client.set(
-                result_key(activity_id, request_id),
-                "FAILED",
-                ex=FAILED_TTL_SECONDS,
+                await redis_client.delete(stock_key(activity_id))
+                await redis_client.delete(inflight_key(activity_id))
+                await redis_client.delete(req_key(activity_id, request_id))
+                return await finalize_request_once(
+                    redis_client,
+                    activity_id=activity_id,
+                    request_id=request_id,
+                    result="FAILED",
+                    ttl_seconds=FAILED_TTL_SECONDS,
+                    release_reservation=False,
+                )
+            return await finalize_request_once(
+                redis_client,
+                activity_id=activity_id,
+                request_id=request_id,
+                result="FAILED",
+                ttl_seconds=FAILED_TTL_SECONDS,
+                release_reservation=False,
             )
-            return "FAILED"

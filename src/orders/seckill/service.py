@@ -9,7 +9,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import NoScriptError
 
 from orders.seckill.consumer import SECKILL_STREAM_KEY
-from orders.seckill.keys import req_key, result_key, stock_key
+from orders.seckill.keys import inflight_key, req_key, result_key, stock_key
 
 PreDeductCode = Literal["ACCEPTED", "DUPLICATE", "SOLD_OUT"]
 ResultCode = Literal["PENDING", "SUCCESS", "FAILED", "NOT_FOUND"]
@@ -35,6 +35,7 @@ def run_pre_deduct(
         req_key(activity_id, request_id),
         result_key(activity_id, request_id),
         SECKILL_STREAM_KEY,
+        inflight_key(activity_id),
     ]
     args = [str(ttl_seconds), str(activity_id), str(user_id), request_id]
 
@@ -62,6 +63,7 @@ async def attempt(
         req_key(activity_id, request_id),
         result_key(activity_id, request_id),
         SECKILL_STREAM_KEY,
+        inflight_key(activity_id),
     ]
     args = [str(ttl_seconds), str(activity_id), str(user_id), request_id]
 

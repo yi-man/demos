@@ -12,7 +12,7 @@ from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.seckill.compensation import reconcile_once
 from orders.seckill.consumer import SECKILL_STREAM_KEY, consume_once
-from orders.seckill.keys import result_key, stock_key
+from orders.seckill.keys import inflight_key, result_key, stock_key
 
 
 def test_consumer_confirms_order_once() -> None:
@@ -54,6 +54,7 @@ async def _run_compensation_rollback_case() -> None:
     redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
     try:
         await redis_client.set(stock_key(activity_id), 0)
+        await redis_client.set(inflight_key(activity_id), 1)
         await redis_client.set(result_key(activity_id, request_id), "PENDING")
 
         result = await reconcile_once(
@@ -65,10 +66,12 @@ async def _run_compensation_rollback_case() -> None:
 
         restored_stock = await redis_client.get(stock_key(activity_id))
         assert restored_stock == "10"
+        assert await redis_client.get(inflight_key(activity_id)) == "0"
 
         result_status = await redis_client.get(result_key(activity_id, request_id))
         assert result_status == "FAILED"
     finally:
+        await redis_client.delete(inflight_key(activity_id))
         await redis_client.delete(stock_key(activity_id))
         await redis_client.delete(result_key(activity_id, request_id))
         await redis_client.aclose()

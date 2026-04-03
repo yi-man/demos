@@ -2,6 +2,7 @@
 -- KEYS[2] = request marker key
 -- KEYS[3] = result key
 -- KEYS[4] = stream key
+-- KEYS[5] = inflight count key
 -- ARGV[1] = ttl seconds
 -- ARGV[2] = activity_id
 -- ARGV[3] = user_id
@@ -17,6 +18,7 @@ if stock <= 0 then
 end
 
 redis.call("DECR", KEYS[1])
+redis.call("INCR", KEYS[5])
 redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
 redis.call("SET", KEYS[3], "PENDING", "EX", ARGV[1])
 redis.call(

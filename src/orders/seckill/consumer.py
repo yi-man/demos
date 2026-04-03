@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from orders.core.db.session import SessionMaker
 from orders.seckill.compensation import reconcile_once
+from orders.seckill.exceptions import (
+    SeckillActivityNotFoundError,
+    SeckillDbStockExhaustedError,
+)
 from orders.seckill.keys import result_key
 from orders.seckill.repo import (
     acquire_processing_lease,
@@ -19,6 +25,12 @@ SECKILL_STREAM_GROUP = "seckill-consumer-group"
 SUCCESS_TTL_SECONDS = 300
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_LEASE_SECONDS = 30
+
+
+class LeaseAcquireStatus(str, Enum):
+    ACQUIRED = "ACQUIRED"
+    TERMINAL = "TERMINAL"
+    LEASED_BY_OTHER = "LEASED_BY_OTHER"
 
 
 def _decode(value: str | bytes) -> str:
@@ -119,17 +131,19 @@ async def consume_once(
     retry_count = 0
     async with session_maker() as lease_session:
         async with lease_session.begin():
-            acquired, retry_count = await acquire_processing_lease(
+            lease_status, retry_count = await acquire_processing_lease(
                 session=lease_session,
                 activity_id=activity_id,
                 request_id=request_id,
                 processor_id=consumer_name,
                 lease_seconds=lease_seconds,
             )
-            if not acquired:
+            if lease_status == LeaseAcquireStatus.TERMINAL.value:
                 await redis_client.xack(stream_key, group_name, event_id)
                 await redis_client.xdel(stream_key, event_id)
                 return True
+            if lease_status == LeaseAcquireStatus.LEASED_BY_OTHER.value:
+                return False
 
     try:
         async with session_maker() as session:
@@ -145,9 +159,7 @@ async def consume_once(
                     activity_id=activity_id,
                     request_id=request_id,
                 )
-    except ValueError as exc:
-        if "seckill activity not found" not in str(exc):
-            raise
+    except (SeckillActivityNotFoundError, SeckillDbStockExhaustedError) as exc:
         async with session_maker() as failed_session:
             async with failed_session.begin():
                 await mark_failed_final(

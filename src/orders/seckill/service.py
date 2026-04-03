@@ -25,6 +25,7 @@ def _decrement_script() -> str:
 def run_pre_deduct(
     redis_client: Redis,
     activity_id: int,
+    user_id: int,
     request_id: str,
     ttl_seconds: int = 300,
 ) -> PreDeductCode:
@@ -33,8 +34,9 @@ def run_pre_deduct(
         stock_key(activity_id),
         req_key(activity_id, request_id),
         result_key(activity_id, request_id),
+        SECKILL_STREAM_KEY,
     ]
-    args = [str(ttl_seconds)]
+    args = [str(ttl_seconds), str(activity_id), str(user_id), request_id]
 
     sha = redis_client.script_load(script)
     try:
@@ -54,14 +56,14 @@ async def attempt(
     request_id: str,
     ttl_seconds: int = 300,
 ) -> PreDeductCode:
-    _ = user_id
     script = _decrement_script()
     keys = [
         stock_key(activity_id),
         req_key(activity_id, request_id),
         result_key(activity_id, request_id),
+        SECKILL_STREAM_KEY,
     ]
-    args = [str(ttl_seconds)]
+    args = [str(ttl_seconds), str(activity_id), str(user_id), request_id]
 
     sha = await redis_client.script_load(script)
     try:
@@ -75,18 +77,7 @@ async def attempt(
     else:
         code = result
 
-    if code == "ACCEPTED":
-        await redis_client.xadd(
-            SECKILL_STREAM_KEY,
-            {
-                "activity_id": str(activity_id),
-                "user_id": str(user_id),
-                "request_id": request_id,
-            },
-        )
     return code
-
-
 async def query_result(
     redis_client: AsyncRedis,
     activity_id: int,

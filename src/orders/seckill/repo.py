@@ -12,6 +12,10 @@ from orders.core.db.models import (
     SeckillRequestState,
     SeckillStockLedger,
 )
+from orders.seckill.exceptions import (
+    SeckillActivityNotFoundError,
+    SeckillDbStockExhaustedError,
+)
 
 
 async def confirm_order_once(
@@ -28,9 +32,18 @@ async def confirm_order_once(
     if existing_order_id is not None:
         return False
 
-    activity = await session.get(SeckillActivity, activity_id)
+    activity_stmt = (
+        select(SeckillActivity)
+        .where(SeckillActivity.id == activity_id)
+        .with_for_update()
+    )
+    activity = await session.scalar(activity_stmt)
     if activity is None:
-        raise ValueError(f"seckill activity not found: {activity_id}")
+        raise SeckillActivityNotFoundError(f"seckill activity not found: {activity_id}")
+    if activity.db_sold >= activity.total_stock:
+        raise SeckillDbStockExhaustedError(
+            f"seckill activity stock exhausted in db: {activity_id}"
+        )
 
     order = SeckillOrder(
         activity_id=activity_id,
@@ -134,7 +147,7 @@ async def acquire_processing_lease(
     request_id: str,
     processor_id: str,
     lease_seconds: int,
-) -> tuple[bool, int]:
+) -> tuple[str, int]:
     state_stmt = (
         select(SeckillRequestState)
         .where(
@@ -159,10 +172,10 @@ async def acquire_processing_lease(
         )
         session.add(state)
         await session.flush()
-        return True, state.retry_count
+        return "ACQUIRED", state.retry_count
 
     if state.status in {"SUCCESS", "FAILED_FINAL"}:
-        return False, state.retry_count
+        return "FINALIZED", state.retry_count
 
     if (
         state.status == "PROCESSING"
@@ -170,7 +183,7 @@ async def acquire_processing_lease(
         and state.lease_until is not None
         and state.lease_until > now
     ):
-        return False, state.retry_count
+        return "LEASED_BY_OTHER", state.retry_count
 
     state.retry_count += 1
     state.status = "PROCESSING"
@@ -178,7 +191,7 @@ async def acquire_processing_lease(
     state.processor_id = processor_id
     state.lease_until = lease_until
     await session.flush()
-    return True, state.retry_count
+    return "ACQUIRED", state.retry_count
 
 
 async def mark_success(

@@ -7,7 +7,7 @@ import uuid
 import redis
 from fastapi.testclient import TestClient
 from redis.asyncio import Redis as AsyncRedis
-from sqlalchemy import delete, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
 from orders.core.db.alembic_utils import build_mysql_sync_url

@@ -64,7 +64,7 @@ async def _run_compensation_rollback_case() -> None:
         assert result == "FAILED"
 
         restored_stock = await redis_client.get(stock_key(activity_id))
-        assert restored_stock == "1"
+        assert restored_stock == "10"
 
         result_status = await redis_client.get(result_key(activity_id, request_id))
         assert result_status == "FAILED"

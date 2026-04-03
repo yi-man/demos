@@ -21,7 +21,12 @@ from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orders.core.db.models import SeckillActivity, SeckillOrder, SeckillStockLedger
+from orders.core.db.models import (
+    SeckillActivity,
+    SeckillOrder,
+    SeckillRequestState,
+    SeckillStockLedger,
+)
 from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.main import app
@@ -51,6 +56,11 @@ async def _insert_activity(session: AsyncSession) -> int:
 async def _cleanup_activity(session: AsyncSession, activity_id: int) -> None:
     await session.execute(
         delete(SeckillOrder).where(SeckillOrder.activity_id == activity_id)
+    )
+    await session.execute(
+        delete(SeckillRequestState).where(
+            SeckillRequestState.activity_id == activity_id
+        )
     )
     await session.execute(
         delete(SeckillStockLedger).where(SeckillStockLedger.activity_id == activity_id)

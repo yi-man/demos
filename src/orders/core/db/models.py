@@ -155,3 +155,32 @@ class SeckillStockLedger(Base):
         server_default=text("CURRENT_TIMESTAMP(6)"),
         nullable=False,
     )
+
+
+class SeckillRequestState(Base):
+    __tablename__ = "seckill_request_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "activity_id",
+            "request_id",
+            name="uq_seckill_request_states_activity_id_request_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activity_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RECEIVED")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        onupdate=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )

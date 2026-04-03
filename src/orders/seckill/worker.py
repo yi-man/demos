@@ -26,8 +26,14 @@ async def run_consumer_loop(
     On empty streams it sleeps briefly to avoid busy looping.
     """
     rounds = 0
-    while max_rounds is None or rounds < max_rounds:
-        ok = await consume_once(redis_client=redis_client)
+    iterations = 0
+    while max_rounds is None or iterations < max_rounds:
+        iterations += 1
+        try:
+            ok = await consume_once(redis_client=redis_client)
+        except Exception:
+            await asyncio.sleep(sleep_when_empty_s)
+            continue
         if ok:
             rounds += 1
             continue

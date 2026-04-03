@@ -7,7 +7,12 @@ import uuid
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy import delete, select
 
-from orders.core.db.models import SeckillActivity, SeckillOrder, SeckillStockLedger
+from orders.core.db.models import (
+    SeckillActivity,
+    SeckillOrder,
+    SeckillRequestState,
+    SeckillStockLedger,
+)
 from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.seckill.consumer import SECKILL_STREAM_KEY
@@ -98,6 +103,11 @@ async def _run_one_event_case() -> None:
                     await session.execute(
                         delete(SeckillOrder).where(
                             SeckillOrder.activity_id == activity_id
+                        )
+                    )
+                    await session.execute(
+                        delete(SeckillRequestState).where(
+                            SeckillRequestState.activity_id == activity_id
                         )
                     )
                     await session.execute(

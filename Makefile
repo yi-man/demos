@@ -5,7 +5,7 @@ PYTHON_VERSION := 3.13
 HOST ?= 127.0.0.1
 PORT ?= 9600
 
-.PHONY: install python lock sync dev run test lint format typecheck build docs
+.PHONY: install python lock sync dev run test lint format typecheck build docs seckill-consumer
 
 install:
 	uv python install $(PYTHON_VERSION)
@@ -24,6 +24,9 @@ dev: sync
 
 run: sync
 	uv run -- uvicorn --host $(HOST) --port $(PORT) $(MODULE).main:app
+
+seckill-consumer: sync
+	uv run -- python -m orders.seckill.worker --sleep-when-empty-s 0.2
 
 test: sync
 	@rc=0; \

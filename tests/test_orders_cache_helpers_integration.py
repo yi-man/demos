@@ -37,4 +37,3 @@ def test_cache_set_get_invalidate_roundtrip() -> None:
             await r.aclose()
 
     asyncio.run(run())
-

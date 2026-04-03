@@ -6,4 +6,3 @@ def build_mysql_sync_url() -> str:
         f"mysql+pymysql://{settings.mysql_user}:{settings.mysql_pass}"
         f"@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}"
     )
-

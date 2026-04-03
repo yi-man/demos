@@ -3,7 +3,15 @@ from __future__ import annotations
 import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, Numeric, String, text
+from sqlalchemy import (
+    BigInteger,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.mysql import CHAR as MySQLChar
 from sqlalchemy.dialects.mysql import TIMESTAMP as MySQLTimestamp
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -66,3 +74,117 @@ class OrderItem(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     order: Mapped[Order] = relationship("Order", back_populates="items")
+
+
+class SeckillActivity(Base):
+    __tablename__ = "seckill_activities"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    sku_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    start_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6), nullable=False
+    )
+    end_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    total_stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    db_sold: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        onupdate=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+
+
+class SeckillOrder(Base):
+    __tablename__ = "seckill_orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "activity_id",
+            "request_id",
+            name="uq_seckill_orders_activity_id_request_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activity_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("seckill_activities.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    order_no: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="created")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        onupdate=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+
+
+class SeckillStockLedger(Base):
+    __tablename__ = "seckill_stock_ledgers"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activity_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("seckill_activities.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    biz_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+
+
+class SeckillRequestState(Base):
+    __tablename__ = "seckill_request_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "activity_id",
+            "request_id",
+            name="uq_seckill_request_states_activity_id_request_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activity_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RECEIVED")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    processor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[datetime.datetime | None] = mapped_column(
+        MySQLTimestamp(fsp=6), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        MySQLTimestamp(fsp=6),
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        onupdate=text("CURRENT_TIMESTAMP(6)"),
+        nullable=False,
+    )

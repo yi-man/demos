@@ -4,10 +4,15 @@ import datetime
 
 import redis
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import create_engine, delete
+from sqlalchemy.orm import Session
 
-from orders.core.db.models import SeckillActivity, SeckillOrder, SeckillRequestState, SeckillStockLedger
-from orders.core.db.session import SessionMaker
+from orders.core.db.models import (
+    SeckillActivity,
+    SeckillOrder,
+    SeckillRequestState,
+    SeckillStockLedger,
+)
 from orders.core.settings import settings
 from orders.main import app
 from orders.seckill.consumer import SECKILL_STREAM_KEY
@@ -104,57 +109,47 @@ def _create_activity(
     start_offset: datetime.timedelta,
     end_offset: datetime.timedelta,
 ) -> int:
-    return __import__("asyncio").run(
-        _create_activity_async(
-            status=status,
-            start_offset=start_offset,
-            end_offset=end_offset,
-        )
-    )
-
-
-async def _create_activity_async(
-    *,
-    status: str,
-    start_offset: datetime.timedelta,
-    end_offset: datetime.timedelta,
-) -> int:
     now = datetime.datetime.now(datetime.UTC)
-    async with SessionMaker() as session:
-        async with session.begin():
-            activity = SeckillActivity(
-                sku_id=10001,
-                start_at=now + start_offset,
-                end_at=now + end_offset,
-                status=status,
-                total_stock=1,
-                db_sold=0,
-            )
-            session.add(activity)
-            await session.flush()
-            return int(activity.id)
+    with Session(_sync_engine()) as session:
+        activity = SeckillActivity(
+            sku_id=10001,
+            start_at=now + start_offset,
+            end_at=now + end_offset,
+            status=status,
+            total_stock=1,
+            db_sold=0,
+        )
+        session.add(activity)
+        session.commit()
+        session.refresh(activity)
+        return int(activity.id)
 
 
 def _cleanup_activity(activity_id: int) -> None:
-    __import__("asyncio").run(_cleanup_activity_async(activity_id))
+    with Session(_sync_engine()) as session:
+        session.execute(
+            delete(SeckillOrder).where(SeckillOrder.activity_id == activity_id)
+        )
+        session.execute(
+            delete(SeckillRequestState).where(
+                SeckillRequestState.activity_id == activity_id
+            )
+        )
+        session.execute(
+            delete(SeckillStockLedger).where(
+                SeckillStockLedger.activity_id == activity_id
+            )
+        )
+        session.execute(
+            delete(SeckillActivity).where(SeckillActivity.id == activity_id)
+        )
+        session.commit()
 
 
-async def _cleanup_activity_async(activity_id: int) -> None:
-    async with SessionMaker() as session:
-        async with session.begin():
-            await session.execute(
-                delete(SeckillOrder).where(SeckillOrder.activity_id == activity_id)
-            )
-            await session.execute(
-                delete(SeckillRequestState).where(
-                    SeckillRequestState.activity_id == activity_id
-                )
-            )
-            await session.execute(
-                delete(SeckillStockLedger).where(
-                    SeckillStockLedger.activity_id == activity_id
-                )
-            )
-            await session.execute(
-                delete(SeckillActivity).where(SeckillActivity.id == activity_id)
-            )
+def _sync_engine():
+    return create_engine(
+        "mysql+pymysql://"
+        f"{settings.mysql_user}:{settings.mysql_pass}"
+        f"@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}",
+        pool_pre_ping=True,
+    )

@@ -18,6 +18,11 @@ from orders.seckill.exceptions import (
 )
 
 
+def _naive_utc_now() -> datetime.datetime:
+    """Match MySQL TIMESTAMP values returned without tzinfo."""
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+
 async def confirm_order_once(
     session: AsyncSession,
     activity_id: int,
@@ -157,7 +162,7 @@ async def acquire_processing_lease(
         .with_for_update()
     )
     state = await session.scalar(state_stmt)
-    now = datetime.datetime.now(datetime.UTC)
+    now = _naive_utc_now()
     lease_until = now + datetime.timedelta(seconds=lease_seconds)
 
     if state is None:

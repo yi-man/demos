@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-
 import datetime
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
@@ -15,6 +14,13 @@ from orders.seckill.schemas import AttemptRequest, AttemptResponse, ResultRespon
 from orders.seckill.service import attempt, query_result
 
 router = APIRouter(prefix="/seckill", tags=["seckill"])
+
+
+def _current_activity_time(activity: SeckillActivity) -> datetime.datetime:
+    """Match the DB timestamp flavor (naive vs aware) for comparisons."""
+    if activity.start_at.tzinfo is None:
+        return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    return datetime.datetime.now(datetime.UTC)
 
 
 async def get_redis_client() -> AsyncGenerator[Redis]:
@@ -39,7 +45,7 @@ async def seckill_attempt(
             detail="seckill activity not found",
         )
 
-    now = datetime.datetime.now(datetime.UTC)
+    now = _current_activity_time(activity)
     if activity.status != "online":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

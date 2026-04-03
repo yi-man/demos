@@ -65,6 +65,15 @@ async def ensure_consumer_group(
             raise
 
 
+def _is_missing_stream_response(exc: ResponseError) -> bool:
+    message = str(exc)
+    normalized = message.lower()
+    return (
+        "no such key" in normalized
+        or "stream key no longer exists" in normalized
+    )
+
+
 def _coerce_entries(records: list) -> list[tuple[str, dict]]:
     if not records:
         return []
@@ -96,13 +105,18 @@ async def consume_once(
         stream_key=stream_key,
         group_name=group_name,
     )
-    records = await redis_client.xreadgroup(
-        groupname=group_name,
-        consumername=consumer_name,
-        streams={stream_key: ">"},
-        count=1,
-        block=1000,
-    )
+    try:
+        records = await redis_client.xreadgroup(
+            groupname=group_name,
+            consumername=consumer_name,
+            streams={stream_key: ">"},
+            count=1,
+            block=1000,
+        )
+    except ResponseError as exc:
+        if _is_missing_stream_response(exc):
+            return False
+        raise
     stream_entries = _coerce_entries(records)
     if not stream_entries:
         claimed = await redis_client.xautoclaim(

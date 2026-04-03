@@ -78,6 +78,8 @@ async def attempt(
         code = result
 
     return code
+
+
 async def query_result(
     redis_client: AsyncRedis,
     activity_id: int,

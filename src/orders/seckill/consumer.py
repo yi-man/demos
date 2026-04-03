@@ -65,6 +65,50 @@ async def ensure_consumer_group(
             raise
 
 
+async def _safe_xreadgroup(
+    redis_client,
+    *,
+    group_name: str,
+    consumer_name: str,
+    stream_key: str,
+):
+    try:
+        return await redis_client.xreadgroup(
+            groupname=group_name,
+            consumername=consumer_name,
+            streams={stream_key: ">"},
+            count=1,
+            block=1000,
+        )
+    except ResponseError as exc:
+        if _is_missing_stream_response(exc):
+            return []
+        raise
+
+
+async def _safe_xautoclaim(
+    redis_client,
+    *,
+    group_name: str,
+    consumer_name: str,
+    stream_key: str,
+    lease_seconds: int,
+):
+    try:
+        return await redis_client.xautoclaim(
+            name=stream_key,
+            groupname=group_name,
+            consumername=consumer_name,
+            min_idle_time=lease_seconds * 1000,
+            start_id="0-0",
+            count=1,
+        )
+    except ResponseError as exc:
+        if _is_missing_stream_response(exc):
+            return []
+        raise
+
+
 def _is_missing_stream_response(exc: ResponseError) -> bool:
     message = str(exc)
     normalized = message.lower()
@@ -105,27 +149,20 @@ async def consume_once(
         stream_key=stream_key,
         group_name=group_name,
     )
-    try:
-        records = await redis_client.xreadgroup(
-            groupname=group_name,
-            consumername=consumer_name,
-            streams={stream_key: ">"},
-            count=1,
-            block=1000,
-        )
-    except ResponseError as exc:
-        if _is_missing_stream_response(exc):
-            return False
-        raise
+    records = await _safe_xreadgroup(
+        redis_client,
+        group_name=group_name,
+        consumer_name=consumer_name,
+        stream_key=stream_key,
+    )
     stream_entries = _coerce_entries(records)
     if not stream_entries:
-        claimed = await redis_client.xautoclaim(
-            name=stream_key,
-            groupname=group_name,
-            consumername=consumer_name,
-            min_idle_time=lease_seconds * 1000,
-            start_id="0-0",
-            count=1,
+        claimed = await _safe_xautoclaim(
+            redis_client,
+            group_name=group_name,
+            consumer_name=consumer_name,
+            stream_key=stream_key,
+            lease_seconds=lease_seconds,
         )
         stream_entries = _coerce_autoclaim_entries(claimed)
     if not stream_entries:

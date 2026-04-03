@@ -16,11 +16,11 @@ from orders.seckill.service import attempt, query_result
 router = APIRouter(prefix="/seckill", tags=["seckill"])
 
 
-def _current_activity_time(activity: SeckillActivity) -> datetime.datetime:
-    """Match the DB timestamp flavor (naive vs aware) for comparisons."""
-    if activity.start_at.tzinfo is None:
-        return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-    return datetime.datetime.now(datetime.UTC)
+def _normalize_activity_time(value: datetime.datetime) -> datetime.datetime:
+    """Treat naive DB timestamps as UTC for consistent comparisons."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
 
 
 async def get_redis_client() -> AsyncGenerator[Redis]:
@@ -45,18 +45,20 @@ async def seckill_attempt(
             detail="seckill activity not found",
         )
 
-    now = _current_activity_time(activity)
+    now = datetime.datetime.now(datetime.UTC)
+    start_at = _normalize_activity_time(activity.start_at)
+    end_at = _normalize_activity_time(activity.end_at)
     if activity.status != "online":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="seckill activity is not online",
         )
-    if now < activity.start_at:
+    if now < start_at:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="seckill activity has not started",
         )
-    if now >= activity.end_at:
+    if now >= end_at:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="seckill activity has ended",

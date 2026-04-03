@@ -23,6 +23,14 @@ def _naive_utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
+def _match_timestamp_reference(
+    value: datetime.datetime | None,
+) -> datetime.datetime:
+    if value is None or value.tzinfo is None:
+        return _naive_utc_now()
+    return datetime.datetime.now(datetime.UTC)
+
+
 async def confirm_order_once(
     session: AsyncSession,
     activity_id: int,
@@ -162,7 +170,7 @@ async def acquire_processing_lease(
         .with_for_update()
     )
     state = await session.scalar(state_stmt)
-    now = _naive_utc_now()
+    now = _match_timestamp_reference(state.lease_until if state is not None else None)
     lease_until = now + datetime.timedelta(seconds=lease_seconds)
 
     if state is None:

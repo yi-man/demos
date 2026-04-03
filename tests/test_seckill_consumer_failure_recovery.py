@@ -11,7 +11,13 @@ from orders.core.db.models import SeckillRequestState, SeckillStockLedger
 from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.seckill.consumer import SECKILL_STREAM_KEY, consume_once
-from orders.seckill.keys import finalized_key, inflight_key, req_key, result_key, stock_key
+from orders.seckill.keys import (
+    finalized_key,
+    inflight_key,
+    req_key,
+    result_key,
+    stock_key,
+)
 from orders.seckill.worker import run_consumer_loop
 
 

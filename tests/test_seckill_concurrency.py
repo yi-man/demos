@@ -31,7 +31,13 @@ from orders.core.db.session import SessionMaker
 from orders.core.settings import settings
 from orders.main import app
 from orders.seckill.consumer import SECKILL_STREAM_KEY, consume_once
-from orders.seckill.keys import req_key, result_key, stock_key
+from orders.seckill.keys import (
+    finalized_key,
+    inflight_key,
+    req_key,
+    result_key,
+    stock_key,
+)
 
 # Keep moderate so CI/local stays fast; still exercises concurrent Lua + HTTP.
 SECKILL_STOCK = 25
@@ -114,6 +120,7 @@ async def _run_concurrency_case() -> None:
 
         await redis_client.delete(SECKILL_STREAM_KEY)
         await redis_client.set(stock_key(aid), SECKILL_STOCK)
+        await redis_client.delete(inflight_key(aid))
 
         transport = ASGITransport(app=app)
         async with httpx.AsyncClient(
@@ -169,7 +176,9 @@ async def _run_concurrency_case() -> None:
         for rid in request_ids:
             await redis_client.delete(req_key(activity_id, rid))
             await redis_client.delete(result_key(activity_id, rid))
+            await redis_client.delete(finalized_key(activity_id, rid))
         if activity_id is not None:
             await redis_client.delete(stock_key(activity_id))
+            await redis_client.delete(inflight_key(activity_id))
         await redis_client.delete(SECKILL_STREAM_KEY)
         await redis_client.aclose()

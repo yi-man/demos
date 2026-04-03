@@ -26,7 +26,7 @@ async def finalize_request_once(
     result: str,
     ttl_seconds: int,
     release_reservation: bool,
-    release_to_target_stock: int | None,
+    release_to_target_stock: int | None = None,
 ) -> str:
     finalized = await redis_client.set(
         finalized_key(activity_id, request_id),

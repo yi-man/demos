@@ -230,7 +230,7 @@ async def _run_reconcile_success_backfill_case() -> None:
         assert result == "SUCCESS"
         assert await redis_client.get(result_key(activity_id, request_id)) == "SUCCESS"
         assert await redis_client.get(inflight_key(activity_id)) == "0"
-        assert await redis_client.get(stock_key(activity_id)) is None
+        assert await redis_client.get(stock_key(activity_id)) == "0"
     finally:
         await redis_client.delete(stock_key(activity_id))
         await redis_client.delete(inflight_key(activity_id))
@@ -262,12 +262,19 @@ async def _run_failed_reconcile_preserves_other_inflight_case() -> None:
             request_id=failed_request_id,
         )
         assert result == "FAILED"
-        assert await redis_client.get(result_key(activity_id, failed_request_id)) == "FAILED"
+        assert (
+            await redis_client.get(result_key(activity_id, failed_request_id))
+            == "FAILED"
+        )
         assert await redis_client.get(stock_key(activity_id)) == "2"
         assert await redis_client.get(inflight_key(activity_id)) == "1"
-        assert await redis_client.get(finalized_key(activity_id, failed_request_id)) == "1"
         assert (
-            await redis_client.get(result_key(activity_id, other_request_id)) == "PENDING"
+            await redis_client.get(finalized_key(activity_id, failed_request_id))
+            == "1"
+        )
+        assert (
+            await redis_client.get(result_key(activity_id, other_request_id))
+            == "PENDING"
         )
     finally:
         await redis_client.delete(finalized_key(activity_id, failed_request_id))

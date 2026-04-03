@@ -168,7 +168,11 @@ async def _run_reconcile_success_backfill_case() -> None:
     request_id = f"reconcile-success-{uuid.uuid4().hex}"
     redis_client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
     try:
-        _insert_confirmed_order(activity_id=activity_id, request_id=request_id, user_id=99)
+        _insert_confirmed_order(
+            activity_id=activity_id,
+            request_id=request_id,
+            user_id=99,
+        )
         await redis_client.delete(result_key(activity_id, request_id))
 
         result = await reconcile_once(

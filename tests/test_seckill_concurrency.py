@@ -53,9 +53,7 @@ async def _cleanup_activity(session: AsyncSession, activity_id: int) -> None:
         delete(SeckillOrder).where(SeckillOrder.activity_id == activity_id)
     )
     await session.execute(
-        delete(SeckillStockLedger).where(
-            SeckillStockLedger.activity_id == activity_id
-        )
+        delete(SeckillStockLedger).where(SeckillStockLedger.activity_id == activity_id)
     )
     await session.execute(
         delete(SeckillActivity).where(SeckillActivity.id == activity_id)
@@ -63,8 +61,10 @@ async def _cleanup_activity(session: AsyncSession, activity_id: int) -> None:
 
 
 async def _count_orders(session: AsyncSession, activity_id: int) -> int:
-    stmt = select(func.count()).select_from(SeckillOrder).where(
-        SeckillOrder.activity_id == activity_id
+    stmt = (
+        select(func.count())
+        .select_from(SeckillOrder)
+        .where(SeckillOrder.activity_id == activity_id)
     )
     return int(await session.scalar(stmt) or 0)
 
@@ -163,4 +163,3 @@ async def _run_concurrency_case() -> None:
             await redis_client.delete(stock_key(activity_id))
         await redis_client.delete(SECKILL_STREAM_KEY)
         await redis_client.aclose()
-

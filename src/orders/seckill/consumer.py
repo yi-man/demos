@@ -152,6 +152,8 @@ async def _finalize_request(
     )
     if finalized:
         inflight_after = await redis_client.decr(inflight_key(activity_id))
+        if inflight_after <= 0:
+            await redis_client.delete(inflight_key(activity_id))
         if inflight_after < 0:
             await redis_client.set(inflight_key(activity_id), 0)
     await redis_client.set(

@@ -38,6 +38,7 @@ async def _run_activity_missing_case() -> None:
 
         # Simulate Lua pre-deduct already happened.
         await redis_client.set(stock_key(activity_id), 0)
+        await redis_client.set(inflight_key(activity_id), 1)
         await redis_client.set(result_key(activity_id, request_id), "PENDING")
         await redis_client.xadd(
             SECKILL_STREAM_KEY,
@@ -56,8 +57,11 @@ async def _run_activity_missing_case() -> None:
         current_stock = await redis_client.get(stock_key(activity_id))
         assert current_stock is None
         inflight = await redis_client.get(inflight_key(activity_id))
-        assert inflight is None
-        assert await redis_client.get(finalized_key(activity_id, request_id)) == "1"
+        assert inflight == "0"
+        assert (
+            await redis_client.get(finalized_key(activity_id, request_id))
+            == "FAILED"
+        )
         stream_len = await redis_client.xlen(SECKILL_STREAM_KEY)
         assert stream_len == 0
 

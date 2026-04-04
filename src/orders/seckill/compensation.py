@@ -26,11 +26,11 @@ async def finalize_request_once(
     result: str,
     ttl_seconds: int,
     release_reservation: bool,
-    release_to_target_stock: int | None = None,
+    stock_target_after_release: int | None = None,
 ) -> str:
     finalized = await redis_client.set(
         finalized_key(activity_id, request_id),
-        "1",
+        result,
         ex=ttl_seconds,
         nx=True,
     )
@@ -40,10 +40,8 @@ async def finalize_request_once(
             await redis_client.set(inflight_key(activity_id), 0)
             inflight_after = 0
 
-        if release_to_target_stock is None:
-            await redis_client.incr(stock_key(activity_id))
-        else:
-            target_stock = max(release_to_target_stock - inflight_after, 0)
+        if stock_target_after_release is not None:
+            target_stock = max(stock_target_after_release - inflight_after, 0)
             await redis_client.set(stock_key(activity_id), target_stock)
 
     await redis_client.set(
@@ -75,7 +73,6 @@ async def reconcile_once(
                     result="SUCCESS",
                     ttl_seconds=SUCCESS_TTL_SECONDS,
                     release_reservation=True,
-                    release_to_target_stock=0,
                 )
 
             activity_exists = await has_activity(
@@ -107,20 +104,20 @@ async def reconcile_once(
                     result="FAILED",
                     ttl_seconds=FAILED_TTL_SECONDS,
                     release_reservation=True,
-                    release_to_target_stock=target_stock,
+                    stock_target_after_release=target_stock,
                 )
             elif not activity_exists:
-                await redis_client.delete(stock_key(activity_id))
-                await redis_client.delete(inflight_key(activity_id))
                 await redis_client.delete(req_key(activity_id, request_id))
-                return await finalize_request_once(
+                result = await finalize_request_once(
                     redis_client,
                     activity_id=activity_id,
                     request_id=request_id,
                     result="FAILED",
                     ttl_seconds=FAILED_TTL_SECONDS,
-                    release_reservation=False,
+                    release_reservation=True,
                 )
+                await redis_client.delete(stock_key(activity_id))
+                return result
             return await finalize_request_once(
                 redis_client,
                 activity_id=activity_id,

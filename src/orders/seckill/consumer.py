@@ -231,9 +231,10 @@ async def consume_once(
                 return False
 
     try:
+        created_order = False
         async with session_maker() as session:
             async with session.begin():
-                _ = await confirm_order_once(
+                created_order = await confirm_order_once(
                     session=session,
                     activity_id=activity_id,
                     user_id=user_id,
@@ -244,6 +245,16 @@ async def consume_once(
                     activity_id=activity_id,
                     request_id=request_id,
                 )
+        if not created_order:
+            _ = await reconcile_once(
+                redis_client=redis_client,
+                activity_id=activity_id,
+                request_id=request_id,
+                session_maker=session_maker,
+            )
+            await redis_client.xack(stream_key, group_name, event_id)
+            await redis_client.xdel(stream_key, event_id)
+            return True
     except (SeckillActivityNotFoundError, SeckillDbStockExhaustedError) as exc:
         async with session_maker() as failed_session:
             async with failed_session.begin():

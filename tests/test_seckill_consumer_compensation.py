@@ -23,6 +23,10 @@ def test_compensation_rolls_back_redis_when_db_order_missing() -> None:
     asyncio.run(_run_compensation_rollback_case())
 
 
+def test_consumer_restores_stock_when_request_replays_existing_order() -> None:
+    asyncio.run(_run_existing_order_replay_case())
+
+
 async def _run_consumer_confirmation_case() -> None:
     activity_id = await _prepare_activity()
     request_id = f"req-consumer-{uuid4().hex}"
@@ -82,6 +86,60 @@ async def _run_compensation_rollback_case() -> None:
     )
     assert order_count == 0
     assert ledger_count == 1
+
+
+async def _run_existing_order_replay_case() -> None:
+    activity_id = await _prepare_activity()
+    request_id = f"req-existing-{uuid4().hex}"
+    redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        async with SessionMaker() as session:
+            async with session.begin():
+                activity = await session.get(SeckillActivity, activity_id)
+                if activity is None:
+                    raise AssertionError("seckill activity should exist")
+                activity.db_sold = 1
+                session.add(
+                    SeckillOrder(
+                        activity_id=activity_id,
+                        user_id=123,
+                        request_id=request_id,
+                        order_no=f"SK{uuid4().hex[:30]}",
+                        status="created",
+                    )
+                )
+                session.add(
+                    SeckillStockLedger(
+                        activity_id=activity_id,
+                        delta=-1,
+                        reason="confirm_order",
+                        biz_id=request_id,
+                    )
+                )
+
+        await redis_client.delete(SECKILL_STREAM_KEY)
+        await redis_client.set(stock_key(activity_id), 8)
+        await redis_client.set(inflight_key(activity_id), 1)
+        await redis_client.xadd(
+            SECKILL_STREAM_KEY,
+            {
+                "activity_id": str(activity_id),
+                "user_id": "123",
+                "request_id": request_id,
+            },
+        )
+
+        ok = await consume_once(redis_client=redis_client)
+        assert ok is True
+        assert await redis_client.get(result_key(activity_id, request_id)) == "SUCCESS"
+        assert await redis_client.get(inflight_key(activity_id)) == "0"
+        assert await redis_client.get(stock_key(activity_id)) == "9"
+    finally:
+        await redis_client.delete(SECKILL_STREAM_KEY)
+        await redis_client.delete(inflight_key(activity_id))
+        await redis_client.delete(stock_key(activity_id))
+        await redis_client.delete(result_key(activity_id, request_id))
+        await redis_client.aclose()
 
 
 async def _prepare_activity() -> int:

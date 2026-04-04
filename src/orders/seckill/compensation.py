@@ -66,6 +66,14 @@ async def reconcile_once(
                 request_id=request_id,
             )
             if order_exists:
+                activity = await session.scalar(
+                    select(SeckillActivity)
+                    .where(SeckillActivity.id == activity_id)
+                    .with_for_update()
+                )
+                target_stock: int | None = None
+                if activity is not None:
+                    target_stock = max(activity.total_stock - activity.db_sold, 0)
                 return await finalize_request_once(
                     redis_client,
                     activity_id=activity_id,
@@ -73,6 +81,7 @@ async def reconcile_once(
                     result="SUCCESS",
                     ttl_seconds=SUCCESS_TTL_SECONDS,
                     release_reservation=True,
+                    stock_target_after_release=target_stock,
                 )
 
             activity_exists = await has_activity(

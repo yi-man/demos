@@ -230,7 +230,7 @@ async def _run_reconcile_success_backfill_case() -> None:
         assert result == "SUCCESS"
         assert await redis_client.get(result_key(activity_id, request_id)) == "SUCCESS"
         assert await redis_client.get(inflight_key(activity_id)) == "0"
-        assert await redis_client.get(stock_key(activity_id)) is None
+        assert await redis_client.get(stock_key(activity_id)) == "1"
     finally:
         await redis_client.delete(stock_key(activity_id))
         await redis_client.delete(inflight_key(activity_id))

@@ -218,6 +218,12 @@ async def consume_once(
                 lease_seconds=lease_seconds,
             )
             if lease_status == LeaseAcquireStatus.TERMINAL.value:
+                _ = await reconcile_once(
+                    redis_client=redis_client,
+                    activity_id=activity_id,
+                    request_id=request_id,
+                    session_maker=session_maker,
+                )
                 await redis_client.xack(stream_key, group_name, event_id)
                 await redis_client.xdel(stream_key, event_id)
                 return True

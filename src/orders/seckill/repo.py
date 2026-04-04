@@ -202,7 +202,7 @@ async def acquire_processing_lease(
         return "ACQUIRED", state.retry_count
 
     if state.status in {"SUCCESS", "FAILED_FINAL"}:
-        return "FINALIZED", state.retry_count
+        return "TERMINAL", state.retry_count
 
     if (
         state.status == "PROCESSING"

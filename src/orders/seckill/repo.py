@@ -12,6 +12,23 @@ from orders.core.db.models import (
     SeckillRequestState,
     SeckillStockLedger,
 )
+from orders.seckill.exceptions import (
+    SeckillActivityNotFoundError,
+    SeckillDbStockExhaustedError,
+)
+
+
+def _naive_utc_now() -> datetime.datetime:
+    """Match MySQL TIMESTAMP values returned without tzinfo."""
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+
+def _match_timestamp_reference(
+    value: datetime.datetime | None,
+) -> datetime.datetime:
+    if value is None or value.tzinfo is None:
+        return _naive_utc_now()
+    return datetime.datetime.now(datetime.UTC)
 
 
 async def confirm_order_once(
@@ -28,9 +45,18 @@ async def confirm_order_once(
     if existing_order_id is not None:
         return False
 
-    activity = await session.get(SeckillActivity, activity_id)
+    activity_stmt = (
+        select(SeckillActivity)
+        .where(SeckillActivity.id == activity_id)
+        .with_for_update()
+    )
+    activity = await session.scalar(activity_stmt)
     if activity is None:
-        raise ValueError(f"seckill activity not found: {activity_id}")
+        raise SeckillActivityNotFoundError(f"seckill activity not found: {activity_id}")
+    if activity.db_sold >= activity.total_stock:
+        raise SeckillDbStockExhaustedError(
+            f"seckill activity stock exhausted in db: {activity_id}"
+        )
 
     order = SeckillOrder(
         activity_id=activity_id,
@@ -70,6 +96,20 @@ async def has_activity(
     activity_id: int,
 ) -> bool:
     return await session.get(SeckillActivity, activity_id) is not None
+
+
+async def get_activity_stock_snapshot(
+    session: AsyncSession,
+    activity_id: int,
+) -> tuple[int, int] | None:
+    stmt = select(SeckillActivity.total_stock, SeckillActivity.db_sold).where(
+        SeckillActivity.id == activity_id
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is None:
+        return None
+    total_stock, db_sold = row
+    return int(total_stock), int(db_sold)
 
 
 async def add_compensation_ledger_once(
@@ -134,7 +174,7 @@ async def acquire_processing_lease(
     request_id: str,
     processor_id: str,
     lease_seconds: int,
-) -> tuple[bool, int]:
+) -> tuple[str, int]:
     state_stmt = (
         select(SeckillRequestState)
         .where(
@@ -144,7 +184,7 @@ async def acquire_processing_lease(
         .with_for_update()
     )
     state = await session.scalar(state_stmt)
-    now = datetime.datetime.now(datetime.UTC)
+    now = _match_timestamp_reference(state.lease_until if state is not None else None)
     lease_until = now + datetime.timedelta(seconds=lease_seconds)
 
     if state is None:
@@ -159,10 +199,10 @@ async def acquire_processing_lease(
         )
         session.add(state)
         await session.flush()
-        return True, state.retry_count
+        return "ACQUIRED", state.retry_count
 
     if state.status in {"SUCCESS", "FAILED_FINAL"}:
-        return False, state.retry_count
+        return "TERMINAL", state.retry_count
 
     if (
         state.status == "PROCESSING"
@@ -170,7 +210,7 @@ async def acquire_processing_lease(
         and state.lease_until is not None
         and state.lease_until > now
     ):
-        return False, state.retry_count
+        return "LEASED_BY_OTHER", state.retry_count
 
     state.retry_count += 1
     state.status = "PROCESSING"
@@ -178,7 +218,7 @@ async def acquire_processing_lease(
     state.processor_id = processor_id
     state.lease_until = lease_until
     await session.flush()
-    return True, state.retry_count
+    return "ACQUIRED", state.retry_count
 
 
 async def mark_success(

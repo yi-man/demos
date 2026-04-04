@@ -6,7 +6,10 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from orders.core.db import models  # noqa: F401
-from orders.core.db.alembic_utils import build_mysql_sync_url
+from orders.core.db.alembic_utils import (
+    MYSQL_INIT_COMMAND,
+    build_mysql_sync_url,
+)
 from orders.core.db.base import Base
 
 config = context.config
@@ -33,6 +36,9 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = build_mysql_sync_url()
+    configuration["sqlalchemy.connect_args"] = {
+        "init_command": MYSQL_INIT_COMMAND,
+    }
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",

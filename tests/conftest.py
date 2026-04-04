@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 from collections.abc import Generator
 
 import pytest
@@ -13,7 +14,7 @@ from orders.core.db.session import async_engine
 def ensure_alembic_schema_upgraded() -> None:
     """Ensure database schema is up to date before any test runs."""
     subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         check=True,
         capture_output=True,
         text=True,

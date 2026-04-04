@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import datetime
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from orders.core.db.models import SeckillActivity
+from orders.core.db.session import get_async_session
 from orders.core.redis.client import create_redis_client
 from orders.seckill.schemas import AttemptRequest, AttemptResponse, ResultResponse
 from orders.seckill.service import attempt, query_result
 
 router = APIRouter(prefix="/seckill", tags=["seckill"])
+
+
+def _normalize_activity_time(value: datetime.datetime) -> datetime.datetime:
+    """Treat naive DB timestamps as UTC for consistent comparisons."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
 
 
 async def get_redis_client() -> AsyncGenerator[Redis]:
@@ -24,8 +35,35 @@ async def get_redis_client() -> AsyncGenerator[Redis]:
 async def seckill_attempt(
     activity_id: int,
     payload: AttemptRequest,
+    session: AsyncSession = Depends(get_async_session),
     redis: Redis = Depends(get_redis_client),
 ) -> AttemptResponse:
+    activity = await session.get(SeckillActivity, activity_id)
+    if activity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="seckill activity not found",
+        )
+
+    now = datetime.datetime.now(datetime.UTC)
+    start_at = _normalize_activity_time(activity.start_at)
+    end_at = _normalize_activity_time(activity.end_at)
+    if activity.status != "online":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="seckill activity is not online",
+        )
+    if now < start_at:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="seckill activity has not started",
+        )
+    if now >= end_at:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="seckill activity has ended",
+        )
+
     code = await attempt(
         redis_client=redis,
         activity_id=activity_id,

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 import sqlalchemy as sa
 
@@ -7,7 +8,7 @@ from orders.core.db.alembic_utils import build_mysql_sync_url
 
 def test_seckill_tables_exist_after_upgrade():
     subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         check=True,
         capture_output=True,
         text=True,
